@@ -16,33 +16,38 @@ class ImageIdentification:
             results = ddgs.images(keywords=term, max_results=max_images)
             return L(results).itemgot('image')
     
+    def _update_file_names(self, path:Path, prefix:str | None = None):
+        for idx, file in enumerate(get_image_files(path)):
+            new_file_name = '_'.join([prefix, str(idx)]) + '.jpg'
+            file.rename(path/new_file_name)
+                
     def download_images_from_terms(self, terms: List[str], max_images: int):
         path = self.path
         for term in terms:
-            folder = ''.join(term.split())
-            dest = (path/folder)
-            dest.mkdir(exist_ok=True, parents=True)
-            download_images(dest, urls=self.search_images(f'{term} photos', max_images))
-            resize_image(path/folder, max_size=400, dest=path/folder)
+            prefix = ''.join(term.split())
+            download_images(path, urls=self.search_images(f'{term} photos', max_images))
+            resize_image(path, max_size=400, dest=path)
             failed = verify_images(get_image_files(path))
             failed.map(Path.unlink)
             len(failed)
+            self._update_file_names(path, prefix=prefix)
             sleep(10)
     
     def set_training_batch(self) -> DataBlock:
         path = self.path
-        df = self.df
-        training_batch = DataBlock(blocks=(ImageBlock, CategoryBlock),
-                        splitter=ColSplitter('is_valid'),
-                        get_x=ColReader('fname', pref=str(path) + os.path.sep),
-                        get_y=ColReader('labels', label_delim=' '),
-                        item_tfms = Resize(460),
-                        batch_tfms=aug_transforms(size=224)).dataloaders(df)
-        training_batch.show_batch(max_n=8)
-        return training_batch
+        dls = DataBlock(
+            blocks=(ImageBlock, CategoryBlock),
+            get_items=get_image_files,
+            splitter=RandomSplitter(valid_pct=0.2, seed=42),
+            get_y=using_attr(RegexLabeller(r'(.+)_\d+.jpg$'), 'name'),
+            item_tfms=Resize(460),
+            batch_tfms=aug_transforms(size=224)
+            ).dataloaders(path)
+        dls.show_batch(max_n=8)
+        return dls
         
-    def fine_tune_model(self, training_batch: DataBlock, arch=resnet18, metrics=error_rate):
-        learn = vision_learner(training_batch, arch, metrics=metrics)
+    def fine_tune_model(self, dataloaders, arch=resnet18, metrics=error_rate):
+        learn = vision_learner(dataloaders, arch, metrics=metrics)
         learn.fine_tune(3)
         self.learn = learn
         
@@ -66,9 +71,8 @@ class ImageIdentification:
 if __name__ == '__main__':
     image_id = ImageIdentification(path=Path('maple_or_oak'))
     # image_id.download_images_from_terms(terms=['maple leaf', 'oak leaf'], max_images=100)
-    image_id.set_training_df()
-    training_batch = image_id.set_training_batch()
-    image_id.fine_tune_model(training_batch)
+    dataloaders = image_id.set_training_batch()
+    image_id.fine_tune_model(dataloaders)
     image_id.test_image_from_term('maple leaf')
     image_id.test_image_from_term('oak leaf')
     
