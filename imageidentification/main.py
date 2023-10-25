@@ -29,17 +29,6 @@ class ImageIdentification:
             len(failed)
             sleep(10)
     
-    def set_training_df(self) -> pd.DataFrame:
-        df = pd.DataFrame(columns=['fname', 'labels', 'is_valid'])
-        path = self.path
-        for dir in os.listdir(path):
-            if os.path.isdir(path/dir):
-                for file in os.listdir(path/dir):
-                    if os.path.isfile(path/dir/file):
-                        df = df._append({'fname': file, 'labels': dir, 'is_valid': True}, ignore_index=True)
-        self.df = df
-        return df
-    
     def set_training_batch(self) -> DataBlock:
         path = self.path
         df = self.df
