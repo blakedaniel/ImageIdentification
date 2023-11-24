@@ -1,88 +1,99 @@
 from duckduckgo_search import DDGS
-from fastcore.all import *
-from fastdownload import download_url
-from fastai.vision.all import *
-from time import sleep
-from typing import List
-import pandas as pd
-from dotenv import load_dotenv
-from pathlib import Path
-from PIL.Image import Image as PILImage
+import torch
+import torchvision
+import torchvision.transforms as transforms
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 
-load_dotenv()
+with DDGS() as ddgs:
+    keywords = 'cat'
+    ddgs_images_gen = ddgs.images(
+      keywords,
+      region="wt-wt",
+      safesearch="off",
+      timelimit='y',
+      size=None,
+      color="Monochrome",
+      type_image=None,
+      layout=None,
+      license_image=None,
+      max_results=10,
+    )
+    for r in ddgs_images_gen:
+        print(r)
 
-class ImageIdentification:
-    def __init__(self, path: Path) -> None:
-        self.path = path
-    
-    def search_images(self, term: str, max_images: int):
-        print(f'Searching for: {term}')
-        with DDGS() as ddgs:
-            results = ddgs.images(keywords=term, max_results=max_images)
-            return L(results).itemgot('image')
-    
-    def _update_file_names(self, path:Path, prefix:str | None = None):
-        for idx, file in enumerate(get_image_files(path)):
-            new_file_name = '_'.join([prefix, str(idx)]) + '.jpg'
-            file.rename(path/new_file_name)
-                
-    def download_images_from_terms(self, terms: List[str], max_images: int):
-        path = self.path
-        for term in terms:
-            print(f'Downloading images for: {term}')
-            prefix = ''.join(term.split())
-            download_images(path, urls=self.search_images(f'{term} photos', max_images))
-            resize_image(path, max_size=400, dest=path)
-            failed = verify_images(get_image_files(path))
-            failed.map(Path.unlink)
-            len(failed)
-            self._update_file_names(path, prefix=prefix)
-            sleep(10)
-    
-    def set_training_batch(self) -> DataBlock:
-        print('Setting up training batch')
-        path = self.path
-        dls = DataBlock(
-            blocks=(ImageBlock, CategoryBlock),
-            get_items=get_image_files,
-            splitter=RandomSplitter(valid_pct=0.2, seed=42),
-            get_y=using_attr(RegexLabeller(r'(.+)_\d+.jpg$'), 'name'),
-            item_tfms=Resize(448),
-            batch_tfms=aug_transforms(size=224)
-            ).dataloaders(path)
-        dls.show_batch(max_n=8)
-        return dls
-        
-    def fine_tune_model(self, dataloaders, arch=resnet18, metrics=error_rate):
-        print('Fine tuning model')
-        learn = vision_learner(dataloaders, arch, metrics=metrics)
-        learn.fine_tune(3)
-        self.learn = learn
-        
-    def test_image_from_term(self, term: str):
-        learn = self.learn
-        file_name = term.split()[0] + '_test.jpg'
-        download_url(self.search_images(term, max_images=1)[0], f'{file_name}')
-        Image.open(f'{file_name}').to_thumb(256, 256)
-        is_term, what, probs = learn.predict(PILImage.create(f'{file_name}'))
-        print(f'This is a: {is_term}.')
-        print(f'Probablity it\'s {is_term}: {probs[0]:.4f}')
-        print('what is this?', what)
-        
-    def test_image_from_path(self, path: Path):
-        learn = self.learn
-        is_term, what, probs = learn.predict(PILImage.create(path))
-        print(f'This is a: {is_term}.')
-        print(f'Probablity it\'s {is_term}: {probs[0]:.4f}')
-        print('what is this?', what)
+breakpoint()
 
-if __name__ == '__main__':
-    image_id = ImageIdentification(path=Path('maple_or_oak'))
-    image_id.download_images_from_terms(terms=['maple leaf', 'oak leaf'], max_images=100)
-    dataloaders = image_id.set_training_batch()
-    image_id.fine_tune_model(dataloaders)
-    image_id.test_image_from_term('maple leaf')
-    image_id.test_image_from_term('oak leaf')
-    
-        
-    
+# Load and normalize CIFAR10
+class ImageClassification:
+    def __init__(self, root:str='./data', classes:tuple=('plane', 'car', 'bird', 'cat',)):
+        self.transform = transforms.Compose(
+            [transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+
+        self.trainset = torchvision.datasets.CIFAR10(root=root, train=True,
+                                                download=True, transform=self.transform)
+        self.trainloader = torch.utils.data.DataLoader(self.trainset, batch_size=4,
+                                                shuffle=True, num_workers=2)
+
+        self.testset = torchvision.datasets.CIFAR10(root=root, train=False,
+                                            download=True, transform=self.transform)
+        self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=4,
+                                                shuffle=False, num_workers=2)
+
+        self.classes = classes
+
+# Define a Convolutional Neural Network
+
+class Net(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = x.view(-1, 16 * 5 * 5)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+image_classification = ImageClassification()
+net = Net()
+
+# Define a loss function and optimizer
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+
+# Train the network
+for epoch in range(2):  # loop over the dataset multiple times
+
+    running_loss = 0.0
+    for i, data in enumerate(image_classification.trainloader, 0):
+        # get the inputs; data is a list of [inputs, labels]
+        inputs, labels = data
+
+        # zero the parameter gradients
+        optimizer.zero_grad()
+
+        # forward + backward + optimize
+        outputs = net(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        # print statistics
+        running_loss += loss.item()
+        if i % 2000 == 1999:    # print every 2000 mini-batches
+            print('[%d, %5d] loss: %.3f' %
+                  (epoch + 1, i + 1, running_loss / 2000))
+            running_loss = 0.0
+
+print('Finished Training')

@@ -12,6 +12,7 @@ fastai = "^2.7.13"
 python-dotenv = "^1.0.0"
 torch = "^2.1.1"
 torchvision = "^0.16.1"
+duckduckgo-images-api = "^1.0.0"
 
 
 [tool.poetry.group.dev.dependencies]
