@@ -5,6 +5,11 @@ from fastai.vision.all import *
 from time import sleep
 from typing import List
 import pandas as pd
+from dotenv import load_dotenv
+from pathlib import Path
+from PIL.Image import Image as PILImage
+
+load_dotenv()
 
 class ImageIdentification:
     def __init__(self, path: Path) -> None:
@@ -24,6 +29,7 @@ class ImageIdentification:
     def download_images_from_terms(self, terms: List[str], max_images: int):
         path = self.path
         for term in terms:
+            print(f'Downloading images for: {term}')
             prefix = ''.join(term.split())
             download_images(path, urls=self.search_images(f'{term} photos', max_images))
             resize_image(path, max_size=400, dest=path)
@@ -34,19 +40,21 @@ class ImageIdentification:
             sleep(10)
     
     def set_training_batch(self) -> DataBlock:
+        print('Setting up training batch')
         path = self.path
         dls = DataBlock(
             blocks=(ImageBlock, CategoryBlock),
             get_items=get_image_files,
             splitter=RandomSplitter(valid_pct=0.2, seed=42),
             get_y=using_attr(RegexLabeller(r'(.+)_\d+.jpg$'), 'name'),
-            item_tfms=Resize(460),
+            item_tfms=Resize(448),
             batch_tfms=aug_transforms(size=224)
             ).dataloaders(path)
         dls.show_batch(max_n=8)
         return dls
         
     def fine_tune_model(self, dataloaders, arch=resnet18, metrics=error_rate):
+        print('Fine tuning model')
         learn = vision_learner(dataloaders, arch, metrics=metrics)
         learn.fine_tune(3)
         self.learn = learn
@@ -70,7 +78,7 @@ class ImageIdentification:
 
 if __name__ == '__main__':
     image_id = ImageIdentification(path=Path('maple_or_oak'))
-    # image_id.download_images_from_terms(terms=['maple leaf', 'oak leaf'], max_images=100)
+    image_id.download_images_from_terms(terms=['maple leaf', 'oak leaf'], max_images=100)
     dataloaders = image_id.set_training_batch()
     image_id.fine_tune_model(dataloaders)
     image_id.test_image_from_term('maple leaf')
