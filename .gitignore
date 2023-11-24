@@ -1,0 +1,9 @@
+# macos files
+.DS_Store
+
+# pycharm files
+.idea
+.ipynb_checkpoints
+
+#environment varialbes
+.env
