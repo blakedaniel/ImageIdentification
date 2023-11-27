@@ -109,7 +109,7 @@ if __name__ == '__main__':
     ict.load_model()
     ict.train_model()
     ict.save_model()
-    print(ict.predict('./data/test/ALSTONIA.jpg'))
-    print(ict.predict('./data/test/Bay-Leaves-Vs.-Basil.jpeg'))
+    print(ict.predict('../tests/test_data/ALSTONIA.jpg'))
+    print(ict.predict('./tests/test_data/Bay-Leaves-Vs.-Basil.jpeg'))
     
     
