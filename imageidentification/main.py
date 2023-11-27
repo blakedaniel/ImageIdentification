@@ -110,6 +110,6 @@ if __name__ == '__main__':
     ict.train_model()
     ict.save_model()
     print(ict.predict('../tests/test_data/ALSTONIA.jpg'))
-    print(ict.predict('./tests/test_data/Bay-Leaves-Vs.-Basil.jpeg'))
+    print(ict.predict('../tests/test_data/Bay-Leaves-Vs.-Basil.jpeg'))
     
     
